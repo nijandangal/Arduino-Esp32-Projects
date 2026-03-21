@@ -1,5 +1,7 @@
 #include <WiFi.h>
+#include <U8g2lib.h>
 
+// WiFi credentials
 const char* ssid     = "nijandangal_2.4";
 const char* password = "_4iCZDQQJ0O7C7";
 
@@ -18,17 +20,23 @@ const int resolution = 8;
 const int channelA   = 0;
 const int channelB   = 1;
 
-int motorSpeed           = 200;
-const int speedThreshold = 160;
-String currentStatus     = "Stopped";
+// Speed constants
+const int MIN_SPEED = 160;
+const int MAX_SPEED = 242;
+
+int motorSpeed       = 200;
+String currentStatus = "Stopped";
 
 // Failsafe watchdog
 unsigned long lastCommandTime = 0;
-const unsigned long commandTimeout = 5000; // 2 seconds
+const unsigned long commandTimeout = 5000; // 5 seconds
 
 // Runtime limit per command
 unsigned long commandStartTime = 0;
-const unsigned long maxRunTime = 6000; // 5 seconds
+const unsigned long maxRunTime = 6000; // 6 seconds
+
+// OLED setup (1.3" SH1106/SSD1306 I2C, pins SCL=22, SDA=21)
+U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE, /* clock=*/ 22, /* data=*/ 21);
 
 void stopCar();
 
@@ -60,9 +68,41 @@ void setup() {
   Serial.println(WiFi.localIP());
 
   server.begin();
+
+  // OLED init
+  u8g2.begin();
+  u8g2.enableUTF8Print();
 }
+
+// --- OLED Control Center ---
+void drawOLED() {
+  u8g2.clearBuffer();
+
+  // Title bar
+  u8g2.setFont(u8g2_font_6x12_tr);
+  u8g2.drawBox(0,0,128,12);
+  u8g2.setDrawColor(0);
+  u8g2.drawStr(2,10,"ESP32 Car Control");
+  u8g2.setDrawColor(1);
+
+  // Status line
+  u8g2.setFont(u8g2_font_6x10_tr);
+  u8g2.drawStr(0,24,("Status: " + currentStatus).c_str());
+
+  // Speed bar
+  int barWidth = map(motorSpeed, MIN_SPEED, MAX_SPEED, 0, 100);
+  u8g2.drawFrame(0,36,110,10);
+  u8g2.drawBox(0,36,barWidth,10);
+  u8g2.drawStr(112,45,(String(motorSpeed)).c_str());
+
+  // WiFi info
+  u8g2.drawStr(0,58,("RSSI: " + String(WiFi.RSSI()) + "dBm").c_str());
+
+  u8g2.sendBuffer();
+}
+
 void applyPwm() {
-  if (motorSpeed >= speedThreshold) {
+  if (motorSpeed >= MIN_SPEED) {
     ledcWrite(ENA, motorSpeed);
     ledcWrite(ENB, motorSpeed);
   } else {
@@ -72,12 +112,12 @@ void applyPwm() {
 }
 
 void setSpeed(int speed) {
-  if (speed < speedThreshold) {
+  if (speed < MIN_SPEED) {
     motorSpeed = 0;
     applyPwm();
     stopCar();
   } else {
-    motorSpeed = constrain(speed, speedThreshold, 242);
+    motorSpeed = constrain(speed, MIN_SPEED, MAX_SPEED);
     applyPwm();
     currentStatus = "Speed set to " + String(motorSpeed);
   }
@@ -95,7 +135,7 @@ void stopCar() {
 }
 
 void forward() {
-  if (motorSpeed >= speedThreshold) {
+  if (motorSpeed >= MIN_SPEED) {
     applyPwm();
     digitalWrite(IN1, LOW);
     digitalWrite(IN2, HIGH);
@@ -108,7 +148,7 @@ void forward() {
 }
 
 void backward() {
-  if (motorSpeed >= speedThreshold) {
+  if (motorSpeed >= MIN_SPEED) {
     applyPwm();
     digitalWrite(IN1, HIGH);
     digitalWrite(IN2, LOW);
@@ -121,7 +161,7 @@ void backward() {
 }
 
 void left() {
-  if (motorSpeed >= speedThreshold) {
+  if (motorSpeed >= MIN_SPEED) {
     applyPwm();
     digitalWrite(IN1, HIGH);
     digitalWrite(IN2, LOW);
@@ -134,7 +174,7 @@ void left() {
 }
 
 void right() {
-  if (motorSpeed >= speedThreshold) {
+  if (motorSpeed >= MIN_SPEED) {
     applyPwm();
     digitalWrite(IN1, LOW);
     digitalWrite(IN2, HIGH);
@@ -145,6 +185,7 @@ void right() {
     commandStartTime = millis();
   }
 }
+
 void handleSerial() {
   if (!Serial.available()) return;
 
@@ -181,14 +222,15 @@ void handleHttp() {
   }
 
   int barPercent = 0;
-  if (motorSpeed >= speedThreshold) {
-    barPercent = (motorSpeed - speedThreshold) * 100 / (242 - speedThreshold);
+  if (motorSpeed >= MIN_SPEED) {
+    barPercent = (motorSpeed - MIN_SPEED) * 100 / (MAX_SPEED - MIN_SPEED);
   }
 
   String html;
   html.reserve(3500);
 
-  html += "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n";
+  // --- Website part unchanged ---
+    html += "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n";
   html += "<!DOCTYPE html><html><head>";
   html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
   html += "<style>";
@@ -209,7 +251,7 @@ void handleHttp() {
 
   html += "<h2>WiFi Controlled Car with ESP32 and L298 using WebServer Mode</h2>";
   html += "<h3 id='status'>Status: " + currentStatus + "</h3>";
-    html += "<div class='grid'>";
+  html += "<div class='grid'>";
   html += "<button class='btn forward' id='btnF'>Forward</button>";
   html += "<button class='btn left' id='btnL'>Left</button>";
   html += "<button class='btn stop' id='btnS'>Stop</button>";
@@ -224,7 +266,7 @@ void handleHttp() {
   html += "<span id='val'>";
   html += String(motorSpeed);
   html += "</span>";
-   html += "<div id='speedBar'><div id='barFill'></div></div>";
+  html += "<div id='speedBar'><div id='barFill'></div></div>";
   html += "</div>";
 
   html += "<script>";
@@ -277,7 +319,7 @@ void loop() {
 
   // WiFi reconnect logic
   if (WiFi.status() != WL_CONNECTED) {
-    WiFi.begin(ssid, password);
+    WiFi.reconnect();
     delay(100);
   }
 
@@ -286,8 +328,11 @@ void loop() {
     stopCar();
   }
 
-  // Runtime limit per command (auto-stop after 5 seconds continuous run)
+  // Runtime limit per command (auto-stop after 6 seconds continuous run)
   if (currentStatus != "Stopped" && (millis() - commandStartTime > maxRunTime)) {
     stopCar();
   }
+
+  // Update OLED control center
+  drawOLED();
 }
