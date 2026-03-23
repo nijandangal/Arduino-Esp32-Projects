@@ -22,7 +22,6 @@ class MotorControl {
 
   private:
     int ENA, IN1, IN2, IN3, IN4, ENB;
-    int channelA, channelB;
     int motorSpeed;
     String currentStatus;
 

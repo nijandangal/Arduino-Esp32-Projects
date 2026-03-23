@@ -6,14 +6,13 @@ OledDisplay::OledDisplay()
 void OledDisplay::begin() {
   u8g2.begin();
   u8g2.enableUTF8Print();
+  Serial.println("OLED initialized");
 }
 
 void OledDisplay::draw(String heading1, String heading2, String status, int speed, int minSpeed, int maxSpeed, int rssi, bool wifiConnected, String ip) {
   u8g2.clearBuffer();
-
   u8g2.drawFrame(0,0,128,64);
 
-  // Heading 1
   u8g2.setFont(u8g2_font_6x12_tr);
   u8g2.drawBox(0,0,128,12);
   u8g2.setDrawColor(0);
@@ -21,26 +20,19 @@ void OledDisplay::draw(String heading1, String heading2, String status, int spee
   u8g2.drawStr((128-w1)/2,10,heading1.c_str());
   u8g2.setDrawColor(1);
 
-  // Heading 2
   u8g2.setFont(u8g2_font_5x8_tr);
   int w2 = u8g2.getStrWidth(heading2.c_str());
   u8g2.drawStr((128-w2)/2,20,heading2.c_str());
 
-  // Status line (ONLY status, no speed)
-  u8g2.setFont(u8g2_font_5x8_tr);
   u8g2.drawStr(2,32,("Status: " + status).c_str());
-
-  // Speed line (separate)
   u8g2.drawStr(2,42,("Speed: " + String(speed)).c_str());
 
-  // WiFi info
   if (wifiConnected) {
     u8g2.drawStr(2,52,"WiFi: Connected");
     char rssiBuf[20];
     sprintf(rssiBuf,"%d dBm", rssi);
     int wR = u8g2.getStrWidth(rssiBuf);
     u8g2.drawStr(128-wR-2,52,rssiBuf);
-
     u8g2.drawStr(2,60,("IP: " + ip).c_str());
 
     int bars = 0;
